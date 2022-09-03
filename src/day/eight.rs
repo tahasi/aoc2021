@@ -170,11 +170,11 @@ impl FromStr for DigitPattern {
     type Err = ParseError;
 
     fn from_str(s: &str) -> result::Result<Self, Self::Err> {
-        let mut pattern: Vec<u8> = s.as_bytes().iter().copied().collect();
+        let mut pattern: Vec<u8> = s.as_bytes().to_vec();
         pattern.sort_unstable();
         let mut prior_element = 0u8;
         for element in pattern.iter().copied() {
-            if element == prior_element || element < b'a' || element > b'g' {
+            if element == prior_element || !(b'a'..=b'g').contains(&element) {
                 return Err(ParseError::ParseDisplayDigitsError(s.to_owned()));
             }
             prior_element = element;

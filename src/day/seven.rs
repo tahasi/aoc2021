@@ -23,7 +23,7 @@ impl Command {
             .fold((0, 0), |(sum, count), position| (sum + position, count + 1));
         let average = sum as f64 / count as f64;
         let mut sorted_positions: Vec<u32> =
-            submarines.positions().iter().copied().collect();
+            submarines.positions().to_vec();
         sorted_positions.sort_unstable();
         let median = sorted_positions[sorted_positions.len() / 2];
 

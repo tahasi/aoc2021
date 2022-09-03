@@ -25,6 +25,8 @@ enum Command {
     Thirteen(day::thirteen::Command),
     Fourteen(day::fourteen::Command),
     Fifteen(day::fifteen::Command),
+    Sixteen(day::sixteen::Command),
+    Seventeen(day::seventeen::Command),
 }
 
 fn main() {
@@ -45,6 +47,8 @@ fn main() {
         Command::Thirteen(command) => command.run(),
         Command::Fourteen(command) => command.run(),
         Command::Fifteen(command) => command.run(),
+        Command::Sixteen(command) => command.run(),
+        Command::Seventeen(command) => command.run(),
     } {
         eprintln!("{}", err);
     }

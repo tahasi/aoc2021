@@ -43,7 +43,7 @@ impl Command {
             Mode::DetectCorrupted => {
                 let points = lines
                     .iter()
-                    .map(|line| check_syntax(&*line))
+                    .map(|line| check_syntax(line))
                     .fold(0, |sum, result| match result {
                         CheckResult::Corrupted {
                             expected: _,
@@ -58,7 +58,7 @@ impl Command {
             Mode::Repair => {
                 let mut points = lines
                     .iter()
-                    .map(|line| check_syntax(&*line))
+                    .map(|line| check_syntax(line))
                     .map(|result| match result {
                         CheckResult::Incomplete {
                             original: _,

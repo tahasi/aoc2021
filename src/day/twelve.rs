@@ -252,8 +252,8 @@ impl Cave {
         match self {
             Cave::Start => "start",
             Cave::End => "end",
-            Cave::Big(name) => &*name,
-            Cave::Small(name) => &*name,
+            Cave::Big(name) => name,
+            Cave::Small(name) => name,
         }
     }
 
@@ -386,12 +386,12 @@ mod tests {
         sorted_expected_paths: &[&str],
     ) {
         let mut paths: Vec<String> =
-            paths.into_iter().map(|path| path.join(",")).collect();
+            paths.iter().map(|path| path.join(",")).collect();
         paths.sort_unstable_by_key(|path| path.to_lowercase());
         if paths.len() == sorted_expected_paths.len() {
             for (path, expected_path) in paths.iter().zip(sorted_expected_paths)
             {
-                assert_eq!(&*path, *expected_path);
+                assert_eq!(path, *expected_path);
             }
         } else {
             for path in paths.iter() {
@@ -510,7 +510,7 @@ mod tests {
         ) -> Self {
             TestCase {
                 cave_connections,
-                sorted_expected_paths: sorted_expected_paths,
+                sorted_expected_paths,
             }
         }
     }

@@ -1,4 +1,4 @@
-use std::{option::Iter, path::PathBuf, process::Child};
+use std::{cmp::Ordering, collections::BinaryHeap, path::PathBuf};
 
 use structopt::{self, StructOpt};
 
@@ -8,82 +8,46 @@ use super::read_lines;
 pub struct Command {
     #[structopt(required(true), parse(from_os_str))]
     input: PathBuf,
+
+    #[structopt(long)]
+    full: bool
 }
 
 impl Command {
     pub fn run(&self) -> anyhow::Result<()> {
         let floor = CaveFloor::parse(
             read_lines(&self.input)?.iter().map(String::as_str),
+            self.full
         )?;
 
-        //println!("Least risky path value: {}", floor.least_risk_path_value());
+        if let Some(least_path_risk) = floor.least_risk_path_value() {
+            println!("Least risky path value: {}", least_path_risk);
+        } else {
+            println!("There's no path out of here");
+        }
+        
+
         Ok(())
     }
 }
 
-#[derive(Clone)]
-struct Node<'a> {
-    floor: &'a CaveFloor,
-    id: String,
-    row: usize,
-    col: usize,
-    chiten_density: u8,
+struct CaveFloor {
+    nodes: Vec<Vec<u8>>,
+    length: usize,
+    width: usize,
 }
 
-impl<'a> Node<'a> {
-    fn new(
-        floor: &'a CaveFloor,
-        row: usize,
-        col: usize,
-        chiten_density: u8,
-    ) -> Self {
-        Node {
-            floor,
-            id: format!("{row}:{col}"),
-            row,
-            col,
-            chiten_density,
+impl CaveFloor {
+    fn new(nodes: Vec<Vec<u8>>, width: usize) -> Self {
+        let length = nodes.len();
+        CaveFloor {
+            nodes,
+            length,
+            width,
         }
     }
 
-    fn chiten_density(&self) -> u8 {
-        self.chiten_density
-    }
-}
-
-impl<'a> PartialEq for Node<'a> {
-    fn eq(&self, other: &Node<'a>) -> bool {
-        std::ptr::eq(self.floor, other.floor)
-            && self.row == other.row
-            && self.col == other.col
-            && self.chiten_density == other.chiten_density
-    }
-}
-
-impl<'a> Eq for Node<'a> {}
-
-struct CaveFloor {
-    nodes: Vec<Vec<u8>>,
-}
-
-impl CaveFloor {
-    fn start(&self) -> Node {
-        Node::new(&self, 0, 0, self.nodes[0][0])
-    }
-
-    fn end(&self) -> Node {
-        let row = self.nodes.len() - 1;
-        let col = self.nodes[row].len() - 1;
-        Node::new(&self, row, col, self.nodes[row][col])
-    }
-}
-
-impl CaveFloor {
-    fn new(nodes: Vec<Vec<u8>>) -> Self {
-        CaveFloor { nodes }
-    }
-
-    fn parse<'iter, Iter>(lines: Iter) -> Result<Self, ParseCaveFloorError>
+    fn parse<'iter, Iter>(lines: Iter, full: bool) -> Result<Self, ParseCaveFloorError>
     where
         Iter: Iterator<Item = &'iter str>,
     {
@@ -107,7 +71,118 @@ impl CaveFloor {
             }
             risk_levels.push(line_levels);
         }
-        Ok(CaveFloor::new(risk_levels))
+
+        if full {
+            let inc_or_wrap = |inc: u8, value: &u8| {
+                let new_value = *value + inc;
+                if new_value <= 9 { new_value } else { new_value - 9 }
+            };
+            let template = risk_levels.clone();
+            for increment in 1u8..=4 {
+                for (row, row_risk_levels) in template.iter().enumerate() {
+                    risk_levels[row].append(&mut row_risk_levels.iter()
+                        .map(|risk| inc_or_wrap(increment, risk)).collect());
+                }
+            }
+            let template = risk_levels.clone();
+            for increment in 1u8..=4 {
+                for row_risk_levels in template.iter() {
+                    risk_levels.push(row_risk_levels.iter()
+                        .map(|risk| inc_or_wrap(increment, risk)).collect());
+                }
+            }
+            line_len = line_len.map(|len| len * 5);
+        }
+        Ok(CaveFloor::new(
+            risk_levels,
+            line_len.expect("there's at least one line"),
+        ))
+    }
+
+    fn edges(&self) -> Vec<Vec<Edge>> {
+        (0..self.length)
+            .flat_map(|row| (0..self.width).map(move |column| (row, column)))
+            .map(|(row, column)| self.node_edges(row, column))
+            .collect()
+    }
+
+    fn node_edges(&self, row: usize, column: usize) -> Vec<Edge> {
+        let mut edges = vec![];
+        // left edge
+        if column != 0 {
+            edges.push(self.edge(row, column - 1))
+        }
+        // top edge
+        if row != 0 {
+            edges.push(self.edge(row - 1, column))
+        }
+        // right edge
+        if column != self.width - 1 {
+            edges.push(self.edge(row, column + 1))
+        }
+        // bottom edge
+        if row != self.length - 1 {
+            edges.push(self.edge(row + 1, column))
+        }
+        edges
+    }
+
+    fn edge(&self, row: usize, column: usize) -> Edge {
+        let node = self.width * row + column;
+        let risk = self.nodes[row][column];
+        Edge { node, risk }
+    }
+
+    fn least_risk_path_value(&self) -> Option<usize> {
+        let start = 0;
+        let goal = self.width * self.length - 1;
+        let edges = self.edges();
+        let mut dist: Vec<_> = (0..edges.len()).map(|_| usize::MAX).collect();
+        let mut heap = BinaryHeap::new();
+
+        dist[start] = 0;
+        heap.push(State { cost: 0, position: start });
+
+        while let Some(State { cost, position }) = heap.pop() {
+            if position == goal { return Some(cost); }
+
+            if cost > dist[position] { continue; }
+
+            for edge in &edges[position] {
+                let next = State { cost: cost + edge.risk as usize, position: edge.node };
+
+                if next.cost < dist[next.position] {
+                    heap.push(next);
+                    dist[next.position] = next.cost;
+                }
+            }
+        }
+
+        None
+    }
+}
+
+struct Edge {
+    node: usize,
+    risk: u8,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+struct State {
+    cost: usize,
+    position: usize
+}
+
+impl Ord for State {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.cost.cmp(&self.cost)
+            .then_with(|| self.position.cmp(&other.position))
+    }
+}
+
+impl PartialOrd for State {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
     }
 }
 
@@ -125,11 +200,17 @@ mod tests {
     use super::CaveFloor;
 
     #[test]
-    fn nodes() {
-        let floor = CaveFloor::parse(INPUT.split('\n')).expect("valid input");
+    fn least_risk_path_value() {
+        let floor = CaveFloor::parse(INPUT.split('\n'), false).expect("valid input");
 
-        assert_eq!(floor.start().chiten_density, 1u8);
-        assert_eq!(floor.end().chiten_density, 1u8);
+        assert_eq!(Some(40), floor.least_risk_path_value());
+    }
+
+    #[test]
+    fn full_least_risk_path_value() {
+        let floor = CaveFloor::parse(INPUT.split('\n'), true).expect("valid input");
+
+        assert_eq!(Some(315), floor.least_risk_path_value());
     }
 
     const INPUT: &str = "1163751742
